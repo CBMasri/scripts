@@ -5,6 +5,10 @@ provides a way to do so. When a workflow has no references to
 workflow runs, it is considered deleted and will no longer
 appear in the GitHub UI.
 
+At the moment, the maximum number of workflow runs that can be
+deleted in a single go is 100. If you have more than 100 workflow
+runs to delete, run the script multiple times.
+
 Commands:
 
 list_workflows: List all workflows in a repository, along with their IDs.
@@ -15,12 +19,16 @@ Usage:
 python delete_workflow_runs.py
 """
 
+import getpass
 import http.client
 import json
-import getpass
+from urllib.parse import urlencode
 
-def http_get(url, headers):
-    print (f'GET {url}')
+def http_get(url, headers, params=None):
+    if params:
+        url = f"{url}?{urlencode(params)}"
+
+    print(f'GET {url}')
 
     conn = http.client.HTTPSConnection("api.github.com")
     conn.request("GET", url, headers=headers)
@@ -30,8 +38,11 @@ def http_get(url, headers):
 
     return response.status, data
 
-def http_delete(url, headers):
-    print (f'DELETE {url}')
+def http_delete(url, headers, params=None):
+    if params:
+        url = f"{url}?{urlencode(params)}"
+
+    print(f'DELETE {url}')
 
     conn = http.client.HTTPSConnection("api.github.com")
     conn.request("DELETE", url, headers=headers)
@@ -49,7 +60,7 @@ def list_workflows(owner, repo, token):
         "User-Agent": "Python",
         "X-GitHub-Api-Version": "2022-11-28"
     }
-    status, data = http_get(url, headers)
+    status, data = http_get(url, headers, params={"per_page": 100})
 
     if status == 200:
         workflows = json.loads(data)["workflows"]
@@ -69,7 +80,7 @@ def delete_workflow_runs(owner, repo, workflow_id, token):
         "User-Agent": "Python",
         "X-GitHub-Api-Version": "2022-11-28"
     }
-    status, data = http_get(url, headers)
+    status, data = http_get(url, headers, params={"per_page": 100})
 
     if status == 200:
         runs = json.loads(data)["workflow_runs"]
