@@ -5,10 +5,6 @@ provides a way to do so. When a workflow has no references to
 workflow runs, it is considered deleted and will no longer
 appear in the GitHub UI.
 
-At the moment, the maximum number of workflow runs that can be
-deleted in a single go is 100. If you have more than 100 workflow
-runs to delete, run the script multiple times.
-
 Commands:
 
 list_workflows: List all workflows in a repository, along with their IDs.
@@ -52,38 +48,48 @@ def http_delete(url, headers, params=None):
 
     return response.status, data
 
-def list_workflows(owner, repo, token):
-    url = f"/repos/{owner}/{repo}/actions/workflows"
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {token}",
-        "User-Agent": "Python",
-        "X-GitHub-Api-Version": "2022-11-28"
-    }
-    status, data = http_get(url, headers, params={"per_page": 100})
+class DeleteWorkflowRuns:
+    def __init__(self):
+        self.owner = None
+        self.repo = None
+        self.token = None
 
-    if status == 200:
-        workflows = json.loads(data)["workflows"]
-        print("\nWorkflow ID\tWorkflow Name\n")
-        for workflow in workflows:
-            print(f"{workflow['id']}\t{workflow['name']}")
-        print(f"\nTotal: {len(workflows)}")
-    else:
-        print(f"Failed to list workflows: {status}")
-        print(data.decode('utf-8'))
+    @property
+    def headers(self):
+        return {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {self.token}",
+            "User-Agent": "Python",
+            "X-GitHub-Api-Version": "2022-11-28"
+        }
 
-def delete_workflow_runs(owner, repo, workflow_id, token):
-    url = f"/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs"
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {token}",
-        "User-Agent": "Python",
-        "X-GitHub-Api-Version": "2022-11-28"
-    }
-    status, data = http_get(url, headers, params={"per_page": 100})
+    def list_workflows(self):
+        url = f"/repos/{self.owner}/{self.repo}/actions/workflows"
+        status, data = http_get(url, self.headers, params={"per_page": 100})
 
-    if status == 200:
-        runs = json.loads(data)["workflow_runs"]
+        if status == 200:
+            workflows = json.loads(data)["workflows"]
+            print("\nWorkflow ID\tWorkflow Name\n")
+            for workflow in workflows:
+                print(f"{workflow['id']}\t{workflow['name']}")
+            print(f"\nTotal: {len(workflows)}")
+        else:
+            print(f"Failed to list workflows: {status}")
+            print(data.decode('utf-8'))
+
+    def list_workflow_runs(self, workflow_id):
+        url = f"/repos/{self.owner}/{self.repo}/actions/workflows/{workflow_id}/runs"
+        status, data = http_get(url, self.headers, params={"per_page": 100})
+
+        if status == 200:
+            return json.loads(data)["workflow_runs"]
+        else:
+            print(f"Failed to list workflow runs: {status}")
+            print(data.decode('utf-8'))
+            return None
+
+    def delete_workflow_runs(self, workflow_id):
+        runs = self.list_workflow_runs(workflow_id)
 
         if not runs:
             print("No workflow runs found.")
@@ -100,35 +106,34 @@ def delete_workflow_runs(owner, repo, workflow_id, token):
 
         for run in runs:
             run_id = run['id']
-            delete_url = f"/repos/{owner}/{repo}/actions/runs/{run_id}"
-            delete_status, delete_data = http_delete(delete_url, headers)
+            url = f"/repos/{self.owner}/{self.repo}/actions/runs/{run_id}"
 
-            if delete_status == 204:
+            status, data = http_delete(url, headers=self.headers)
+
+            if status == 204:
                 print(f"Success")
             else:
-                print(f"Failed: {delete_status}")
-                print(delete_data.decode('utf-8'))
+                print(f"Failed: {status}")
+                print(data.decode('utf-8'))
 
         print("\nDone.")
-    else:
-        print(f"Failed to list workflow runs: {status}")
-        print(data.decode('utf-8'))
 
-def main():
-    token = getpass.getpass("Enter your GitHub personal access token: ")
-    command = input("Enter command (list_workflows / delete_workflow_runs): ")
+    def run(self):
+        self.token = getpass.getpass("Enter your GitHub personal access token: ")
+        command = input("Enter command (list_workflows / delete_workflow_runs): ")
 
-    if command == "list_workflows":
-        owner = input("Enter the repository owner: ")
-        repo = input("Enter the repository name: ")
-        list_workflows(owner, repo, token)
-    elif command == "delete_workflow_runs":
-        owner = input("Enter the repository owner: ")
-        repo = input("Enter the repository name: ")
-        workflow_id = input("Enter the workflow ID: ")
-        delete_workflow_runs(owner, repo, workflow_id, token)
-    else:
-        print("Invalid command")
+        if command not in ["list_workflows", "delete_workflow_runs"]:
+            print("Invalid command")
+            return
+
+        self.owner = input("Enter the repository owner: ")
+        self.repo = input("Enter the repository name: ")
+
+        if command == "list_workflows":
+            self.list_workflows()
+        elif command == "delete_workflow_runs":
+            workflow_id = input("Enter the workflow ID: ")
+            self.delete_workflow_runs(workflow_id)
 
 if __name__ == "__main__":
-    main()
+    DeleteWorkflowRuns().run()
