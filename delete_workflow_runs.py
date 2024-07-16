@@ -21,7 +21,7 @@ import json
 from urllib.parse import urlencode
 
 def http_get(url, headers, params=None):
-    if params:
+    if params and '?' not in url:
         url = f"{url}?{urlencode(params)}"
 
     print(f'GET {url}')
@@ -32,10 +32,10 @@ def http_get(url, headers, params=None):
     data = response.read()
     conn.close()
 
-    return response.status, data
+    return response.status, data, response.headers
 
 def http_delete(url, headers, params=None):
-    if params:
+    if params and '?' not in url:
         url = f"{url}?{urlencode(params)}"
 
     print(f'DELETE {url}')
@@ -47,6 +47,39 @@ def http_delete(url, headers, params=None):
     conn.close()
 
     return response.status, data
+
+def parse_link_header(link_header):
+    if not link_header:
+        return None
+
+    links = link_header.split(',')
+    link_dict = {}
+
+    for link in links:
+        section = link.split(';')
+        url = section[0].strip()[1:-1]
+        rel = section[1].strip().split('=')[1][1:-1]
+        link_dict[rel] = url
+
+    return link_dict
+
+def paginate(initial_url, request_headers, params=None):
+    response_data = []
+    url = initial_url
+
+    while url:
+        status, data, response_headers = http_get(url, request_headers, params)
+
+        if status == 200:
+            response_data.append(json.loads(data))
+            links = parse_link_header(response_headers.get('Link'))
+            url = links.get('next') if links else None
+        else:
+            print(f"Failed to retrieve items: {status}")
+            print(data.decode('utf-8'))
+            break
+
+    return response_data
 
 class DeleteWorkflowRuns:
     def __init__(self):
@@ -65,37 +98,34 @@ class DeleteWorkflowRuns:
 
     def list_workflows(self):
         url = f"/repos/{self.owner}/{self.repo}/actions/workflows"
-        status, data = http_get(url, self.headers, params={"per_page": 100})
+        responses = paginate(url, self.headers, params={"per_page": 20})
+        workflows = [workflow for response in responses for workflow in response["workflows"]]
 
-        if status == 200:
-            workflows = json.loads(data)["workflows"]
-            print("\nWorkflow ID\tWorkflow Name\n")
-            for workflow in workflows:
-                print(f"{workflow['id']}\t{workflow['name']}")
-            print(f"\nTotal: {len(workflows)}")
-        else:
-            print(f"Failed to list workflows: {status}")
-            print(data.decode('utf-8'))
+        if not workflows:
+            print("No workflows found.")
+            return
+
+        print("\nWorkflow ID\tWorkflow Name\n")
+
+        for workflow in workflows:
+            print(f"{workflow['id']}\t{workflow['name']}")
+
+        print(f"\nTotal: {len(workflows)}")
 
     def list_workflow_runs(self, workflow_id):
         url = f"/repos/{self.owner}/{self.repo}/actions/workflows/{workflow_id}/runs"
-        status, data = http_get(url, self.headers, params={"per_page": 100})
+        responses = paginate(url, self.headers, params={"per_page": 20})
 
-        if status == 200:
-            return json.loads(data)["workflow_runs"]
-        else:
-            print(f"Failed to list workflow runs: {status}")
-            print(data.decode('utf-8'))
-            return None
+        return [workflow_run for response in responses for workflow_run in response["workflow_runs"]]
 
     def delete_workflow_runs(self, workflow_id):
-        runs = self.list_workflow_runs(workflow_id)
+        workflow_runs = self.list_workflow_runs(workflow_id)
 
-        if not runs:
+        if not workflow_runs:
             print("No workflow runs found.")
             return
 
-        print(f"\nAre you sure you want to delete all {len(runs)} workflow runs?")
+        print(f"\nAre you sure you want to delete all {len(workflow_runs)} workflow runs?")
         confirm = input("This action cannot be undone! (y/n): ")
 
         if confirm.lower() != 'y':
@@ -104,7 +134,7 @@ class DeleteWorkflowRuns:
 
         print("\nAs you wish...\n")
 
-        for run in runs:
+        for run in workflow_runs:
             run_id = run['id']
             url = f"/repos/{self.owner}/{self.repo}/actions/runs/{run_id}"
 
