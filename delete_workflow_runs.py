@@ -13,11 +13,19 @@ delete_workflow_runs: Delete all workflow runs for a specific workflow ID.
 Usage:
 
 python delete_workflow_runs.py
+
+or, using environment variables:
+
+GITHUB_TOKEN=<token> \
+GITHUB_REPOSITORY_OWNER=<owner> \
+GITHUB_REPOSITORY_NAME=<repo> \
+python delete_workflow_runs.py
 """
 
 import getpass
 import http.client
 import json
+import os
 from urllib.parse import urlencode
 
 def http_get(url, headers, params=None):
@@ -149,7 +157,11 @@ class DeleteWorkflowRuns:
         print("\nDone.")
 
     def run(self):
-        self.token = getpass.getpass("Enter your GitHub personal access token: ")
+        token = os.getenv("GITHUB_TOKEN")
+        owner = os.getenv("GITHUB_REPOSITORY_OWNER")
+        repo = os.getenv("GITHUB_REPOSITORY_NAME")
+
+        self.token = token or getpass.getpass("Enter your GitHub personal access token: ")
 
         commands = ["list_workflows", "delete_workflow_runs"]
         command = input(f"Enter command ({" / ".join(commands)}): ")
@@ -158,8 +170,8 @@ class DeleteWorkflowRuns:
             print("Invalid command")
             return
 
-        self.owner = input("Enter the repository owner: ")
-        self.repo = input("Enter the repository name: ")
+        self.owner = owner or input("Enter the repository owner: ")
+        self.repo = repo or input("Enter the repository name: ")
 
         if command == "list_workflows":
             self.list_workflows()
