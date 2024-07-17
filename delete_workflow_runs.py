@@ -150,9 +150,11 @@ class DeleteWorkflowRuns:
 
     def run(self):
         self.token = getpass.getpass("Enter your GitHub personal access token: ")
-        command = input("Enter command (list_workflows / delete_workflow_runs): ")
 
-        if command not in ["list_workflows", "delete_workflow_runs"]:
+        commands = ["list_workflows", "delete_workflow_runs"]
+        command = input(f"Enter command ({" / ".join(commands)}): ")
+
+        if command not in commands:
             print("Invalid command")
             return
 
